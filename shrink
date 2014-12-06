@@ -1,0 +1,39 @@
+#!/bin/bash
+
+function checksumDir() {
+	local dir="$1"
+
+	local mode
+	local name
+	find $SRCDIR/$dir -mindepth 1 -maxdepth 1 -printf '%M %P\n' | sort | while read mode name; do
+		local key="$dir/$name"
+		local type="blob"
+		if [ -d "$SRC/$key" ]; then
+			# tree
+			key="$key/"
+		fi
+		local hash=$(sed -n "/${key//\//\\/}/{s:\t.*$::;p;}" "$TMP/hashes")
+		printf "%s\t%s\n" "$hash" "$key" >>$TMP/hashes
+		printf "%s %s %s\t%s\n" "$mode" "$type" "$hash" "$name"
+	done
+}
+
+function shrink() {
+	mkdir "$TMP" || return 1
+	# compute all store hashes of all files
+	find "$SRCDIR" -type f | xargs md5sum | sed "s:  $SRCDIR/:\t:" >"$TMP/hashes"
+	# list all directories, in deepest-first order:
+	find "$SRCDIR" -type d -printf '%d\t%P\n' | sort -r -nk1 | cut -f2 >"$TMP/dirsByDepth"
+	# now compute checksums for all dirs
+	sed '/^$/d' "$TMP/dirsByDepth" | while read dir; do
+		checksumDir "$dir"
+	done
+}
+
+
+SRCDIR=${1?'Please specify a directory to shrink'}
+
+# TODO: we must enable changing TMP in order to support shrinking on read-only media
+TMP=$SRCDIR/.shrink
+
+shrink
