@@ -1,6 +1,13 @@
 #!/bin/bash
 
 
+function saveHash() {
+	local path="$1"
+	local hash="$2"
+
+	printf "%s\t%s\n" "$hash" "$path" >>"$TMP/hashes"
+}
+
 ##
 # git-like dir hashing - http://git-scm.com/book/fr/v2/Git-Internals-Git-Objects
 #
@@ -36,11 +43,12 @@ function checksumDir() {
 			echo "ERROR: cannot find hash for $key !!!" | tee $TMP/stop >&2
 			exit 1
 		fi
-		[ -d "$SRCDIR/$key" ] || printf "%s\t%s\n" "$hash" "$key" >>"$TMP/hashes"
+		[ -d "$SRCDIR/$key" ] || saveHash "$key" "$hash"
 		printf "%s %s %s\t%s\n" "$mode" "$type" "$hash" "$name" >>"$TMP/tree"
 	done
 	[ -s "$TMP/stop" ] && return 1
-	sha1sum "$TMP/tree" | sed "s:  .*\$:\t${dir}/:" >>"$TMP/hashes"
+	saveHash "${dir}/" "$(sha1sum $TMP/tree | sed 's:  .*$::')"
+	rm "$TMP/tree"
 }
 
 function shrink() {
