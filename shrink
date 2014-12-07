@@ -1,32 +1,60 @@
 #!/bin/bash
 
+
+##
+# git-like dir hashing - http://git-scm.com/book/fr/v2/Git-Internals-Git-Objects
+#
 function checksumDir() {
 	local dir="$1"
 
-	local mode
+	local filesize
 	local name
-	find $SRCDIR/$dir -mindepth 1 -maxdepth 1 -printf '%M %P\n' | sort | while read mode name; do
+	mkdir -p "$TMP/content/$dir"
+	rm -f "$TMP/tree"
+	find "$SRCDIR/$dir" -mindepth 1 -maxdepth 1 -printf '%s %P\n' | sort -k2 | while read filesize name; do
 		local key="$dir/$name"
 		local type="blob"
-		if [ -d "$SRC/$key" ]; then
-			# tree
+		local hash
+		local mode
+		if [ -d "$SRCDIR/$key" ]; then
+			type="tree"
 			key="$key/"
+			mode="040000"
+			# lookup the stored hash
+			local regex=${key//\//\\/}
+			regex=${regex//./\\.}
+			hash=$(sed -n '/\t'"${regex}"'$/{s:\t.*$::;p;}' "$TMP/hashes")
+		elif [ -L "$SRCDIR/$key" ]; then
+			mode="120000"
+			hash=$( find "$SRCDIR/$key" -printf 'blob %s\0%l' | sha1sum | sed 's:  .*$::' )
+		elif [ -f "$SRCDIR/$key" ]; then
+			mode="120000"
+			[ -x "$SRCDIR/$key" ] && mode="100755"
+			hash=$( (printf "blob ${filesize}\u0000"; cat "$SRCDIR/$key") | sha1sum | sed 's:  .*$::' )
 		fi
-		local hash=$(sed -n "/${key//\//\\/}/{s:\t.*$::;p;}" "$TMP/hashes")
-		printf "%s\t%s\n" "$hash" "$key" >>$TMP/hashes
-		printf "%s %s %s\t%s\n" "$mode" "$type" "$hash" "$name"
+		if [ -z "$hash" ]; then
+			echo "ERROR: cannot find hash for $key !!!" | tee $TMP/stop >&2
+			exit 1
+		fi
+		[ -d "$SRCDIR/$key" ] || printf "%s\t%s\n" "$hash" "$key" >>"$TMP/hashes"
+		printf "%s %s %s\t%s\n" "$mode" "$type" "$hash" "$name" >>"$TMP/tree"
 	done
+	[ -s "$TMP/stop" ] && return 1
+	sha1sum "$TMP/tree" | sed "s:  .*\$:\t${dir}/:" >>"$TMP/hashes"
 }
 
 function shrink() {
 	mkdir "$TMP" || return 1
 	# compute all store hashes of all files
-	find "$SRCDIR" -type f | xargs md5sum | sed "s:  $SRCDIR/:\t:" >"$TMP/hashes"
 	# list all directories, in deepest-first order:
 	find "$SRCDIR" -type d -printf '%d\t%P\n' | sort -r -nk1 | cut -f2 >"$TMP/dirsByDepth"
 	# now compute checksums for all dirs
 	sed '/^$/d' "$TMP/dirsByDepth" | while read dir; do
-		checksumDir "$dir"
+		case "$SRCDIR/$dir/" in
+		"$TMP"/) continue;;
+		*);;
+		esac
+		checksumDir "$dir" || return 1
 	done
 }
 
@@ -35,5 +63,7 @@ SRCDIR=${1?'Please specify a directory to shrink'}
 
 # TODO: we must enable changing TMP in order to support shrinking on read-only media
 TMP=$SRCDIR/.shrink
+
+rm -rf "$TMP" # TODO: only for debugging
 
 shrink
