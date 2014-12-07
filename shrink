@@ -16,7 +16,6 @@ function checksumDir() {
 
 	local filesize
 	local name
-	mkdir -p "$TMP/content/$dir"
 	rm -f "$TMP/tree"
 	find "$SRCDIR/$dir" -mindepth 1 -maxdepth 1 -printf '%s %P\n' | sort -k2 | while read filesize name; do
 		local key="$dir/$name"
@@ -63,6 +62,16 @@ function shrink() {
 		*);;
 		esac
 		checksumDir "$dir" || return 1
+	done
+
+	# OK all hashes are computed, now let's find duplicates
+	#TODO: needs to be optimized; tree duplicates must suppress contained blob duplicates
+	rm -f "$TMP/unshrink"
+	cut -f1 "$TMP/hashes" | sort | uniq -d | while read hash; do
+		sed -n "/^$hash\t/{s:^.*\t::;p;}" "$TMP/hashes" > "$TMP/dup"
+		local first=$(head -1 "$TMP/dup")
+		sed '1d;s:^:'"$first"'\t:' "$TMP/dup" >>"$TMP/unshrink"
+		rm "$TMP/dup"
 	done
 }
 
