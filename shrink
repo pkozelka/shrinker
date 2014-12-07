@@ -32,11 +32,11 @@ function checksumDir() {
 			hash=$(sed -n '/\t'"${regex}"'$/{s:\t.*$::;p;}' "$TMP/hashes")
 		elif [ -L "$SRCDIR/$key" ]; then
 			mode="120000"
-			hash=$( find "$SRCDIR/$key" -printf 'blob %s\0%l' | sha1sum | sed 's:  .*$::' )
+			hash=L_$( find "$SRCDIR/$key" -printf 'blob %s\0%l' | sha1sum | sed 's:  .*$::' )
 		elif [ -f "$SRCDIR/$key" ]; then
 			mode="120000"
 			[ -x "$SRCDIR/$key" ] && mode="100755"
-			hash=$( (printf "blob ${filesize}\u0000"; cat "$SRCDIR/$key") | sha1sum | sed 's:  .*$::' )
+			hash=F_$( (printf "blob ${filesize}\u0000"; cat "$SRCDIR/$key") | sha1sum | sed 's:  .*$::' )
 		fi
 		if [ -z "$hash" ]; then
 			echo "ERROR: cannot find hash for $key !!!" | tee $TMP/stop >&2
@@ -46,7 +46,7 @@ function checksumDir() {
 		printf "%s %s %s\t%s\n" "$mode" "$type" "$hash" "$name" >>"$TMP/tree"
 	done
 	[ -s "$TMP/stop" ] && return 1
-	saveHash "${dir}/" "$(sha1sum $TMP/tree | sed 's:  .*$::')"
+	saveHash "${dir}/" "D_$(sha1sum $TMP/tree | sed 's:  .*$::')"
 	rm "$TMP/tree"
 }
 
