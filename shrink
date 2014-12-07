@@ -67,12 +67,20 @@ function shrink() {
 	# OK all hashes are computed, now let's find duplicates
 	#TODO: needs to be optimized; tree duplicates must suppress contained blob duplicates
 	rm -f "$TMP/unshrink"
+	printf "0" >"$TMP/calcBytes"
 	cut -f1 "$TMP/hashes" | sort | uniq -d | while read hash; do
 		sed -n "/^$hash\t/{s:^.*\t::;p;}" "$TMP/hashes" > "$TMP/dup"
 		local first=$(head -1 "$TMP/dup")
+		local cnt=$(cat $TMP/dup | wc -l)
+		local sz=$(stat --printf=%s "$SRCDIR/$first")
+		printf " + $(( cnt - 1 )) * $sz" >> "$TMP/calcBytes"
 		sed '1d;s:^:'"$first"'\t:' "$TMP/dup" >>"$TMP/unshrink"
 		rm "$TMP/dup"
 	done
+	local shrinkFiles=$(cat $TMP/unshrink | wc -l)
+	echo >> "$TMP/calcBytes"
+	local shrinkBytes=$(cat $TMP/calcBytes | bc)
+	echo "shrink: $shrinkFiles files, $shrinkBytes bytes"
 }
 
 
